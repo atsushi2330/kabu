@@ -34,15 +34,29 @@ export default function BacktestApp() {
 
     try {
       const out: BacktestResult[] = [];
-      for (const ticker of selected) {
+      for (let i = 0; i < selected.length; i++) {
+        const ticker = selected[i];
+        if (i > 0) await new Promise((r) => setTimeout(r, 2000));
+
         const res = await fetch(`/api/ohlc?ticker=${encodeURIComponent(ticker)}&years=${years}`);
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error ?? `${ticker} 取得失敗`);
+        let body: { error?: string; bars?: OhlcBar[] } = {};
+        try {
+          body = await res.json();
+        } catch {
+          throw new Error(
+            res.status === 429
+              ? "Yahoo Finance のアクセス制限。30秒〜1分待って再実行してください。"
+              : `${ticker} の応答が不正です`,
+          );
         }
-        const data = (await res.json()) as { bars: OhlcBar[] };
+        if (!res.ok) {
+          throw new Error(body.error ?? `${ticker} 取得失敗 (${res.status})`);
+        }
+        if (!body.bars?.length) {
+          throw new Error(`${ticker} のデータが空です`);
+        }
         out.push(
-          runDipBuyBacktest(data.bars, ticker, {
+          runDipBuyBacktest(body.bars, ticker, {
             entryDropPct: entryDrop,
             takeProfitPct: takeProfit,
             stopLossPct: stopLoss,
@@ -141,6 +155,8 @@ export default function BacktestApp() {
             <p>左で銘柄と条件を選んで実行。グラフはズーム・パン可能（Plotly）。</p>
             <p style={{ color: "#64748b", fontSize: "0.9rem" }}>
               ※ パラメータ探索（1000通り）は Vercel の制限で非対応。Streamlit 版をローカルで使用してください。
+              <br />
+              ※ 株価は Yahoo Finance 経由。連続実行で制限される場合は1分待って再試行。
             </p>
           </div>
         )}

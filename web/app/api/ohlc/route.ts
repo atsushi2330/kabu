@@ -1,5 +1,6 @@
+import { unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
-import yahooFinance from "yahoo-finance2";
+import { fetchOhlcFromYahoo } from "@/lib/yahoo";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -12,35 +13,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "ticker required" }, { status: 400 });
   }
 
+  if (!Number.isFinite(years) || years < 1 || years > 10) {
+    return NextResponse.json({ error: "years must be 1-10" }, { status: 400 });
+  }
+
+  const getCachedOhlc = unstable_cache(
+    async () => fetchOhlcFromYahoo(ticker, years),
+    ["ohlc", ticker, String(years)],
+    { revalidate: 3600 },
+  );
+
   try {
-    const end = new Date();
-    const start = new Date();
-    start.setFullYear(start.getFullYear() - years);
-
-    const raw = await yahooFinance.historical(ticker, {
-      period1: start,
-      period2: end,
-      interval: "1d",
-    });
-
-    const bars = raw
-      .filter((r) => r.open != null && r.high != null && r.low != null && r.close != null)
-      .map((r) => ({
-        date: r.date.toISOString().slice(0, 10),
-        open: r.open!,
-        high: r.high!,
-        low: r.low!,
-        close: r.close!,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    if (bars.length < 60) {
-      return NextResponse.json({ error: "insufficient data" }, { status: 422 });
-    }
-
-    return NextResponse.json({ ticker, bars });
+    const bars = await getCachedOhlc();
+    return NextResponse.json(
+      { ticker, bars },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "fetch failed";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = msg.includes("Too Many Requests") || msg.includes("アクセス制限") ? 429 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
