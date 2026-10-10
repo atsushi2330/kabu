@@ -1,5 +1,16 @@
 # デプロイ手順
 
+## 公開済み
+
+| サービス | URL |
+|---------|-----|
+| **Vercel（本番）** | https://web-five-gamma-71.vercel.app |
+| **GitHub** | https://github.com/atsushi2330/kabu |
+
+Vercel プロジェクト名: `kabu`（Root Directory: `web`）
+
+---
+
 ## 1. Streamlit（ローカル / Streamlit Cloud）
 
 ```bash
